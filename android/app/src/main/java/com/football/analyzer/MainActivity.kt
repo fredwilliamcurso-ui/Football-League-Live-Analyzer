@@ -231,7 +231,7 @@ class MainActivity : AppCompatActivity() {
                             resolvedLaunchIntent = Intent(Intent.ACTION_MAIN).apply {
                                 addCategory(Intent.CATEGORY_LAUNCHER)
                                 component = ComponentName(pkg, info.activityInfo.name)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                                setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                             }
                         }
                         Log.i(TAG, "Strategy 2 matched! detected Boomplay package name: $detectedPkgName, resolved Activity: $resolvedActivityName, label: $appLabel")
