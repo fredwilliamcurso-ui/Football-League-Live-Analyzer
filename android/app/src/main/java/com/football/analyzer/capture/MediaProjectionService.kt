@@ -84,11 +84,17 @@ class MediaProjectionService : Service() {
 
         // 3. Extract MediaProjection token if provided
         val resultCode = intent?.getIntExtra("RESULT_CODE", 0) ?: 0
-        val dataIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent?.getParcelableExtra("DATA_INTENT", Intent::class.java)
-        } else {
+        val dataIntent: Intent? = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent?.getParcelableExtra("DATA_INTENT", Intent::class.java)
+                    ?: @Suppress("DEPRECATION") (intent?.getParcelableExtra("DATA_INTENT") as? Intent)
+            } else {
+                @Suppress("DEPRECATION")
+                intent?.getParcelableExtra("DATA_INTENT") as? Intent
+            }
+        } catch (e: Throwable) {
             @Suppress("DEPRECATION")
-            intent?.getParcelableExtra("DATA_INTENT")
+            intent?.getParcelableExtra("DATA_INTENT") as? Intent
         }
 
         if (resultCode != 0 && dataIntent != null && mediaProjection == null) {

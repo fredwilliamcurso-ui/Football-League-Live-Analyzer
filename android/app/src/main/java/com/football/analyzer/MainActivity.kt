@@ -13,10 +13,12 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.football.analyzer.capture.MediaProjectionService
@@ -39,27 +41,31 @@ class MainActivity : AppCompatActivity() {
     private val mediaProjectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        Log.i(TAG, "MediaProjection result received: resultCode=${result.resultCode}, hasData=${result.data != null}")
         try {
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+                statusText?.text = "🟢 Screen capture permission GRANTED! Starting Floating HUD..."
+                Toast.makeText(this, "⚽ Screen Observer & HUD Active!", Toast.LENGTH_SHORT).show()
+
                 val serviceIntent = Intent(this, MediaProjectionService::class.java).apply {
                     putExtra("RESULT_CODE", result.resultCode)
                     putExtra("DATA_INTENT", result.data)
                 }
                 ContextCompat.startForegroundService(this, serviceIntent)
-                Toast.makeText(this, "⚽ Football Analyzer HUD Active! Minimizing to reveal game...", Toast.LENGTH_SHORT).show()
                 updateUIState()
 
-                // Auto minimize so the floating HUD is visible over Boomplay / home screen
+                // Auto minimize so floating HUD is immediately visible over Boomplay or desktop
                 Handler(Looper.getMainLooper()).postDelayed({
                     moveTaskToBack(true)
-                }, 500)
+                }, 600)
             } else {
+                statusText?.text = "⚠️ Screen capture permission was cancelled or denied.\n\nPlease tap 'START LIVE SCREEN OBSERVER' again and select 'Start now' / 'Entire screen'."
                 Toast.makeText(this, "Screen capture permission required for live match analysis.", Toast.LENGTH_LONG).show()
                 updateUIState()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error starting projection service", e)
-            Toast.makeText(this, "Service start error: ${e.message}", Toast.LENGTH_LONG).show()
+            showErrorDialog("Failed to start Screen Observer service: ${e.message}")
         }
     }
 
@@ -74,34 +80,23 @@ class MainActivity : AppCompatActivity() {
             btnOpenBoomplay = findViewById(R.id.btnOpenBoomplay)
 
             btnGrantOverlayPermission?.setOnClickListener {
-                requestOverlayPermission()
+                onGrantOverlayClicked(it)
             }
 
             btnToggleOverlay?.setOnClickListener {
-                if (MediaProjectionService.isRunning) {
-                    // Stop service
-                    stopService(Intent(this, MediaProjectionService::class.java))
-                    Toast.makeText(this, "Live Screen Observer stopped.", Toast.LENGTH_SHORT).show()
-                    updateUIState()
-                    return@setOnClickListener
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-                    Toast.makeText(this, "Please enable 'Display over other apps' first.", Toast.LENGTH_LONG).show()
-                    requestOverlayPermission()
-                    return@setOnClickListener
-                }
-                requestMediaProjection()
+                onStartObserverClicked(it)
             }
 
             btnOpenBoomplay?.setOnClickListener {
-                openBoomplayApp()
+                onOpenBoomplayClicked(it)
             }
 
             checkNotificationPermission()
             updateUIState()
+            Log.i(TAG, "MainActivity initialized successfully")
         } catch (e: Throwable) {
             Log.e(TAG, "Fatal error inflating activity_main", e)
+            showErrorDialog("Initialization error: ${e.message}")
         }
     }
 
@@ -110,7 +105,59 @@ class MainActivity : AppCompatActivity() {
         updateUIState()
     }
 
-    private fun openBoomplayApp() {
+    fun onGrantOverlayClicked(view: View?) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!Settings.canDrawOverlays(this)) {
+                    statusText?.text = "Opening Overlay Permission Settings...\nEnable 'Display over other apps' for Football Analyzer, then return here."
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "Overlay permission already granted ✓", Toast.LENGTH_SHORT).show()
+                    updateUIState()
+                }
+            } else {
+                Toast.makeText(this, "Overlay permission granted", Toast.LENGTH_SHORT).show()
+                updateUIState()
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error opening overlay settings", e)
+            showErrorDialog("Cannot open overlay settings: ${e.message}")
+        }
+    }
+
+    fun onStartObserverClicked(view: View?) {
+        Log.i(TAG, "START LIVE SCREEN OBSERVER clicked")
+        try {
+            if (MediaProjectionService.isRunning) {
+                // Stop service
+                stopService(Intent(this, MediaProjectionService::class.java))
+                Toast.makeText(this, "Live Screen Observer stopped.", Toast.LENGTH_SHORT).show()
+                statusText?.text = "Screen observer stopped. Press 'START LIVE SCREEN OBSERVER' to start again."
+                updateUIState()
+                return
+            }
+
+            // Check overlay permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                statusText?.text = "⚠️ OVERLAY PERMISSION REQUIRED:\nPlease tap 'Grant Overlay Permission' first to allow the floating HUD to display over Boomplay."
+                Toast.makeText(this, "Please enable 'Display over other apps' first.", Toast.LENGTH_LONG).show()
+                onGrantOverlayClicked(view)
+                return
+            }
+
+            // Request MediaProjection
+            requestMediaProjection()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error in onStartObserverClicked", e)
+            showErrorDialog("Start Observer error: ${e.message}")
+        }
+    }
+
+    fun onOpenBoomplayClicked(view: View?) {
         val boomplayPackages = listOf(
             "com.afmobi.boomplayer",
             "com.boomplay.music",
@@ -126,7 +173,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (!launched) {
-            // If not found by specific package, search apps with "Boomplay" in label
             try {
                 val intent = Intent(Intent.ACTION_MAIN, null).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
@@ -143,7 +189,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Error querying apps", e)
             }
         }
@@ -162,33 +208,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requestOverlayPermission() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (!Settings.canDrawOverlays(this)) {
-                    val intent = Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                    startActivity(intent)
-                } else {
-                    Toast.makeText(this, "Overlay permission already granted ✓", Toast.LENGTH_SHORT).show()
-                    updateUIState()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening overlay settings", e)
-        }
-    }
-
     private fun requestMediaProjection() {
         try {
-            Toast.makeText(this, "Opening screen capture prompt... Tap 'Start now' / 'Entire screen'", Toast.LENGTH_SHORT).show()
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating screen capture intent", e)
-            Toast.makeText(this, "Unable to request screen capture: ${e.message}", Toast.LENGTH_LONG).show()
+            statusText?.text = "📱 Opening Screen Capture Permission Dialog...\nPlease tap 'Start now' / 'Entire screen' on the system dialog."
+            Toast.makeText(this, "Opening screen capture prompt... Tap 'Start now'", Toast.LENGTH_SHORT).show()
+            
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+            if (projectionManager == null) {
+                showErrorDialog("MediaProjectionManager is not available on this device.")
+                return
+            }
+
+            val captureIntent = projectionManager.createScreenCaptureIntent()
+            mediaProjectionLauncher.launch(captureIntent)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error requesting media projection", e)
+            showErrorDialog("Unable to request screen capture: ${e.message}")
         }
     }
 
@@ -196,11 +231,9 @@ class MainActivity : AppCompatActivity() {
         try {
             val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
             if (hasOverlay) {
-                btnGrantOverlayPermission?.isEnabled = false
                 btnGrantOverlayPermission?.text = "Overlay Permission: GRANTED ✓"
                 btnGrantOverlayPermission?.setBackgroundColor(0xFF3B82F6.toInt())
             } else {
-                btnGrantOverlayPermission?.isEnabled = true
                 btnGrantOverlayPermission?.text = "Grant Overlay Permission"
                 btnGrantOverlayPermission?.setBackgroundColor(0xFFE11D48.toInt())
             }
@@ -208,7 +241,7 @@ class MainActivity : AppCompatActivity() {
             if (MediaProjectionService.isRunning) {
                 btnToggleOverlay?.text = "STOP LIVE SCREEN OBSERVER"
                 btnToggleOverlay?.setBackgroundColor(0xFFEF4444.toInt()) // Red for Stop
-                statusText?.text = "🟢 ACTIVE: Live screen observer & floating HUD running over apps.\n\nTap 'OPEN BOOMPLAY FOOTBALL' below to switch to the game."
+                statusText?.text = "🟢 ACTIVE: Live screen observer & floating HUD running.\n\nTap 'OPEN BOOMPLAY FOOTBALL' below to switch directly to the game."
             } else {
                 btnToggleOverlay?.text = "START LIVE SCREEN OBSERVER"
                 btnToggleOverlay?.setBackgroundColor(0xFF10B981.toInt()) // Green for Start
@@ -218,9 +251,21 @@ class MainActivity : AppCompatActivity() {
                     statusText?.text = "Required: Tap 'Grant Overlay Permission' first so the analyzer can float above Boomplay."
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error updating UI state", e)
         }
     }
-}
 
+    private fun showErrorDialog(message: String) {
+        try {
+            statusText?.text = "⚠️ ERROR: $message"
+            AlertDialog.Builder(this)
+                .setTitle("Football League Analyzer")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+}
