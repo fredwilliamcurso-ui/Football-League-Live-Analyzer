@@ -28,25 +28,26 @@
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="#1E293B"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp" />
 
     <TextView
         android:id="@+id/textStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Status: Initializing permissions..."
+        android:text="Ready: Press 'Start Live Screen Observer' to launch HUD above Boomplay."
         android:textColor="#E2E8F0"
         android:textSize="14sp"
+        android:lineSpacingExtra="4dp"
         android:background="#1E293B"
         android:padding="16dp"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="20dp" />
 
     <Button
         android:id="@+id/btnGrantOverlayPermission"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:text="Grant Overlay Permission"
+        android:layout_height="54dp"
+        android:text="Overlay Permission: GRANTED ✓"
         android:backgroundTint="#3B82F6"
         android:textColor="#FFFFFF"
         android:layout_marginBottom="12dp" />
@@ -55,8 +56,19 @@
         android:id="@+id/btnToggleOverlay"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:text="Start Live Screen Observer"
+        android:text="START LIVE SCREEN OBSERVER"
         android:backgroundTint="#10B981"
-        android:textColor="#FFFFFF" />
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <Button
+        android:id="@+id/btnOpenBoomplay"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:text="OPEN BOOMPLAY FOOTBALL"
+        android:backgroundTint="#6366F1"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="12dp" />
 
 </LinearLayout>

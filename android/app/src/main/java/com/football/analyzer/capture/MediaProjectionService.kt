@@ -55,6 +55,7 @@ class MediaProjectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Log.i(TAG, "MediaProjectionService created")
         handlerThread = HandlerThread("MediaProjectionCaptureThread").apply { start() }
         backgroundHandler = Handler(handlerThread!!.looper)
@@ -316,6 +317,7 @@ class MediaProjectionService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         Log.i(TAG, "MediaProjectionService destroying")
         try {
             virtualDisplay?.release()
@@ -340,5 +342,6 @@ class MediaProjectionService : Service() {
 
     companion object {
         const val NOTIFICATION_ID = 1002
+        var isRunning: Boolean = false
     }
 }
