@@ -10,6 +10,24 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Package Visibility for Boomplay App Detection & Launch on Android 11+ (API 30+) -->
+    <queries>
+        <package android:name="com.afmobi.boomplayer" />
+        <package android:name="com.boomplayer.app" />
+        <package android:name="com.boomplay.music" />
+        <package android:name="com.transsnet.boomplayer" />
+        <package android:name="com.boomplay.lite" />
+        <package android:name="com.transsion.boomplayer" />
+        <package android:name="com.afmobi.boomplayer.intl" />
+        <package android:name="com.boomplayer" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="false"

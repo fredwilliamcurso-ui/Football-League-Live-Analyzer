@@ -2,6 +2,7 @@ package com.football.analyzer
 
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -158,45 +159,149 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onOpenBoomplayClicked(view: View?) {
-        val boomplayPackages = listOf(
+        Log.i(TAG, "=== Boomplay App Detection & Launch Initiated ===")
+        Log.i(TAG, "MediaProjection status: ${MediaProjectionService.isRunning}")
+        Log.i(TAG, "FloatingAnalyzerService status: ${MediaProjectionService.isRunning}")
+
+        val knownBoomplayPackages = listOf(
             "com.afmobi.boomplayer",
+            "com.boomplayer.app",
             "com.boomplay.music",
-            "com.boomplayer.app"
+            "com.transsnet.boomplayer",
+            "com.boomplay.lite",
+            "com.transsion.boomplayer",
+            "com.afmobi.boomplayer.intl",
+            "com.boomplayer",
+            "com.boomplay",
+            "com.boomplay.music.lite"
         )
-        var launched = false
-        for (pkg in boomplayPackages) {
-            val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
-            if (launchIntent != null) {
-                startActivity(launchIntent)
-                launched = true
-                break
+
+        var resolvedLaunchIntent: Intent? = null
+        var detectedPkgName: String? = null
+        var resolvedActivityName: String? = null
+
+        // Strategy 1: Check known package names directly via PackageManager
+        for (pkg in knownBoomplayPackages) {
+            try {
+                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    detectedPkgName = pkg
+                    resolvedLaunchIntent = launchIntent
+                    resolvedActivityName = launchIntent.component?.className ?: "DefaultLaunchActivity"
+                    Log.i(TAG, "Strategy 1 matched: detected Boomplay package name: $detectedPkgName, Activity: $resolvedActivityName")
+                    break
+                }
+            } catch (e: Throwable) {
+                Log.d(TAG, "Strategy 1 package check ($pkg) ignored: ${e.message}")
             }
         }
-        if (!launched) {
+
+        // Strategy 2: Dynamically query all installed launcher activities matching 'boomplay' or 'boom'
+        if (resolvedLaunchIntent == null) {
             try {
-                val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                val launcherQueryIntent = Intent(Intent.ACTION_MAIN, null).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                 }
-                val apps = packageManager.queryIntentActivities(intent, 0)
-                for (app in apps) {
-                    val label = app.loadLabel(packageManager).toString().lowercase()
-                    if (label.contains("boomplay")) {
-                        val launchIntent = packageManager.getLaunchIntentForPackage(app.activityInfo.packageName)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PackageManager.MATCH_ALL else 0
+                val resolveInfos = packageManager.queryIntentActivities(launcherQueryIntent, flags)
+                Log.i(TAG, "Strategy 2: Total launcher activities found: ${resolveInfos.size}")
+
+                for (info in resolveInfos) {
+                    val pkg = info.activityInfo.packageName
+                    val appLabel = try {
+                        info.loadLabel(packageManager).toString()
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    val lowerLabel = appLabel.lowercase()
+                    val lowerPkg = pkg.lowercase()
+
+                    if (lowerPkg.contains("boomplay") || lowerPkg.contains("boomplayer") || lowerPkg.contains("afmobi") ||
+                        lowerLabel.contains("boomplay") || lowerLabel.contains("boom play") || lowerLabel.contains("boom player")) {
+                        
+                        detectedPkgName = pkg
+                        resolvedActivityName = info.activityInfo.name
+                        
+                        // Try getLaunchIntentForPackage first
+                        val directIntent = packageManager.getLaunchIntentForPackage(pkg)
+                        if (directIntent != null) {
+                            resolvedLaunchIntent = directIntent
+                        } else {
+                            // Construct explicit component launch intent
+                            resolvedLaunchIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_LAUNCHER)
+                                component = ComponentName(pkg, info.activityInfo.name)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                            }
+                        }
+                        Log.i(TAG, "Strategy 2 matched! detected Boomplay package name: $detectedPkgName, resolved Activity: $resolvedActivityName, label: $appLabel")
+                        break
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "Strategy 2 queryIntentActivities exception: ${e.message}", e)
+            }
+        }
+
+        // Strategy 3: Check installed applications list
+        if (resolvedLaunchIntent == null) {
+            try {
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PackageManager.MATCH_ALL else 0
+                val installedApps = packageManager.getInstalledApplications(flags)
+                Log.i(TAG, "Strategy 3: Total installed applications found: ${installedApps.size}")
+
+                for (app in installedApps) {
+                    val pkg = app.packageName
+                    val label = try {
+                        packageManager.getApplicationLabel(app).toString()
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    val lowerLabel = label.lowercase()
+                    val lowerPkg = pkg.lowercase()
+
+                    if (lowerPkg.contains("boomplay") || lowerPkg.contains("boomplayer") ||
+                        lowerLabel.contains("boomplay") || lowerLabel.contains("boom play")) {
+                        val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
                         if (launchIntent != null) {
-                            startActivity(launchIntent)
-                            launched = true
+                            detectedPkgName = pkg
+                            resolvedLaunchIntent = launchIntent
+                            resolvedActivityName = launchIntent.component?.className ?: "ApplicationLaunchActivity"
+                            Log.i(TAG, "Strategy 3 matched: detected Boomplay package name: $detectedPkgName, Activity: $resolvedActivityName")
                             break
                         }
                     }
                 }
             } catch (e: Throwable) {
-                Log.e(TAG, "Error querying apps", e)
+                Log.e(TAG, "Strategy 3 getInstalledApplications exception: ${e.message}", e)
             }
         }
 
-        if (!launched) {
-            Toast.makeText(this, "Boomplay app not found directly. Please open Boomplay from your home screen.", Toast.LENGTH_LONG).show()
-            moveTaskToBack(true)
+        // Execute launch or display diagnostic error
+        if (resolvedLaunchIntent != null && detectedPkgName != null) {
+            try {
+                resolvedLaunchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Log.i(TAG, "resolved Boomplay Activity: $resolvedActivityName")
+                Log.i(TAG, "launch Intent: $resolvedLaunchIntent")
+                
+                startActivity(resolvedLaunchIntent)
+                
+                Log.i(TAG, "launch success: true")
+                Toast.makeText(this, "Launching Boomplay ($detectedPkgName)...", Toast.LENGTH_SHORT).show()
+                statusText?.text = "🟢 Boomplay launched ($detectedPkgName)!\nFloating HUD remains active above the game."
+            } catch (e: Throwable) {
+                Log.e(TAG, "launch failure / exact exception: ${e.message}", e)
+                showErrorDialog("Failed to launch Boomplay ($detectedPkgName):\n${e.javaClass.simpleName}: ${e.message}")
+            }
+        } else {
+            Log.w(TAG, "Boomplay package detection failed. No match in installed applications.")
+            val diagnosticMsg = "Could not automatically resolve the Boomplay launcher activity.\n\n" +
+                    "• Package checked: com.afmobi.boomplayer, com.boomplay.music, etc.\n" +
+                    "• If Boomplay is installed under a custom vendor name, you can switch to Boomplay from your home screen or recents menu.\n" +
+                    "• The Football Analyzer HUD is ACTIVE and will continuously analyze the screen once Boomplay is visible."
+            
+            showErrorDialog(diagnosticMsg)
+            statusText?.text = "⚠️ Boomplay launcher activity could not be resolved automatically.\n\nSwitch to Boomplay from your home screen — the floating HUD will stay active over the game."
         }
     }
 
@@ -258,7 +363,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showErrorDialog(message: String) {
         try {
-            statusText?.text = "⚠️ ERROR: $message"
+            statusText?.text = "⚠️ NOTICE:\n$message"
             AlertDialog.Builder(this)
                 .setTitle("Football League Analyzer")
                 .setMessage(message)
