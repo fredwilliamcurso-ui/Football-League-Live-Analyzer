@@ -1,0 +1,6 @@
+{
+  "name": "Football League Live Analyzer",
+  "description": "Real-time computer vision analyzer, round recorder, statistical prediction system, and native Android floating overlay for the Boomplay Football League game.",
+  "requestFramePermissions": ["display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

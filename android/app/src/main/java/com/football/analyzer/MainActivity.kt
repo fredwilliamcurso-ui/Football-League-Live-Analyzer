@@ -1,22 +1,23 @@
 package com.football.analyzer
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
-import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.football.analyzer.capture.MediaProjectionService
-import com.football.analyzer.overlay.FloatingAnalyzerService
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +25,13 @@ class MainActivity : AppCompatActivity() {
     private var statusText: TextView? = null
     private var btnToggleOverlay: Button? = null
     private var btnGrantOverlayPermission: Button? = null
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        Log.i(TAG, "Notification permission granted: $isGranted")
+        updateUIState()
+    }
 
     private val mediaProjectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -34,12 +42,8 @@ class MainActivity : AppCompatActivity() {
                     putExtra("RESULT_CODE", result.resultCode)
                     putExtra("DATA_INTENT", result.data)
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent)
-                } else {
-                    startService(serviceIntent)
-                }
-                startFloatingOverlayService()
+                ContextCompat.startForegroundService(this, serviceIntent)
+                Toast.makeText(this, "⚽ Football Analyzer HUD Started!", Toast.LENGTH_SHORT).show()
                 updateUIState()
             } else {
                 Toast.makeText(this, "Screen capture permission required for live match analysis.", Toast.LENGTH_SHORT).show()
@@ -70,10 +74,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 requestMediaProjection()
             }
+
+            checkNotificationPermission()
             updateUIState()
         } catch (e: Throwable) {
             Log.e(TAG, "Fatal error inflating activity_main", e)
-            // Fallback emergency UI to guarantee screen opens
+            // Emergency fallback UI
             val fallbackLayout = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 setPadding(48, 96, 48, 48)
@@ -107,6 +113,14 @@ class MainActivity : AppCompatActivity() {
         updateUIState()
     }
 
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     private fun requestOverlayPermission() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -136,30 +150,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startFloatingOverlayService() {
-        try {
-            val overlayIntent = Intent(this, FloatingAnalyzerService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(overlayIntent)
-            } else {
-                startService(overlayIntent)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting overlay service", e)
-        }
-    }
-
     private fun updateUIState() {
         try {
             val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
             if (hasOverlay) {
                 btnGrantOverlayPermission?.isEnabled = false
-                btnGrantOverlayPermission?.text = "Overlay Permission: GRANTED"
-                statusText?.text = "Ready to start Live Football Analyzer overlay."
+                btnGrantOverlayPermission?.text = "Overlay Permission: GRANTED ✓"
+                statusText?.text = "Ready: Press 'Start Live Screen Observer' to launch HUD above Boomplay."
             } else {
                 btnGrantOverlayPermission?.isEnabled = true
                 btnGrantOverlayPermission?.text = "Grant Overlay Permission"
-                statusText?.text = "Overlay permission required to display HUD above game."
+                statusText?.text = "Required: Grant Overlay permission to display HUD floating above Boomplay."
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating UI state", e)
