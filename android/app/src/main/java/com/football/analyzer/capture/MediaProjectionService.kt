@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
@@ -28,10 +29,12 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.football.analyzer.MainActivity
 import com.football.analyzer.R
 import com.football.analyzer.prediction.PredictionEngine
+import com.football.analyzer.vision.NativeVisionResult
 import com.football.analyzer.vision.OpenCVGameAnalyzer
 
 class MediaProjectionService : Service() {
@@ -45,7 +48,7 @@ class MediaProjectionService : Service() {
     private var backgroundHandler: Handler? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private lateinit var windowManager: WindowManager
+    private var windowManager: WindowManager? = null
     private var floatingView: View? = null
     private var isMinimized = false
     private var isPaused = false
@@ -53,33 +56,44 @@ class MediaProjectionService : Service() {
     private val visionAnalyzer = OpenCVGameAnalyzer()
     private val predictionEngine = PredictionEngine()
 
+    private var totalFramesReceived: Long = 0
+    private var lastObservedRoundId: String? = null
+    private var isPredictionFrozen: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
-        Log.i(TAG, "MediaProjectionService created")
+        Log.i(TAG, "[MediaProjection] Service created")
         handlerThread = HandlerThread("MediaProjectionCaptureThread").apply { start() }
         backgroundHandler = Handler(handlerThread!!.looper)
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(WINDOW_SERVICE) as? WindowManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand received")
+        Log.i(TAG, "[MediaProjection] onStartCommand received")
 
         // 1. MUST start foreground IMMEDIATELY with correct FGS type for Android 14+
         val notification = buildForegroundNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            Log.i(TAG, "[MediaProjection] Foreground service started successfully")
+        } catch (e: Throwable) {
+            Log.e(TAG, "[MediaProjection] startForeground error: ${e.message}", e)
         }
 
         // 2. Initialize floating HUD if not already added
-        if (floatingView == null) {
-            createFloatingOverlay()
+        mainHandler.post {
+            if (floatingView == null) {
+                createFloatingOverlay()
+            }
         }
 
         // 3. Extract MediaProjection token if provided
@@ -97,23 +111,28 @@ class MediaProjectionService : Service() {
             intent?.getParcelableExtra("DATA_INTENT") as? Intent
         }
 
+        Log.i(TAG, "[MediaProjection] Intent extras: resultCode=$resultCode, hasData=${dataIntent != null}")
+
         if (resultCode != 0 && dataIntent != null && mediaProjection == null) {
             try {
                 val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 mediaProjection = projectionManager.getMediaProjection(resultCode, dataIntent)
+                Log.i(TAG, "[MediaProjection] MediaProjection token obtained: $mediaProjection")
 
                 // Android 14+ MANDATE: Register Callback before createVirtualDisplay
                 mediaProjection?.registerCallback(object : MediaProjection.Callback() {
                     override fun onStop() {
-                        Log.i(TAG, "MediaProjection stopped by system")
+                        Log.i(TAG, "[MediaProjection] MediaProjection stopped by system callback")
                         stopSelf()
                     }
                 }, backgroundHandler)
 
                 startCapture()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start MediaProjection capture", e)
+            } catch (e: Throwable) {
+                Log.e(TAG, "[MediaProjection] Failed to start MediaProjection capture", e)
             }
+        } else if (mediaProjection != null) {
+            Log.i(TAG, "[MediaProjection] MediaProjection already active and running")
         }
 
         return START_STICKY
@@ -121,19 +140,22 @@ class MediaProjectionService : Service() {
 
     private fun startCapture() {
         try {
+            val wm = windowManager ?: (getSystemService(WINDOW_SERVICE) as WindowManager)
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getRealMetrics(metrics)
+            wm.defaultDisplay.getRealMetrics(metrics)
 
             val width = if (metrics.widthPixels > 0) metrics.widthPixels else 1080
             val height = if (metrics.heightPixels > 0) metrics.heightPixels else 1920
             val density = if (metrics.densityDpi > 0) metrics.densityDpi else 320
 
-            // Capture at half resolution for maximum frame processing performance
+            // Capture at half resolution for high-performance non-blocking frame analysis
             val capWidth = width / 2
             val capHeight = height / 2
 
             imageReader = ImageReader.newInstance(capWidth, capHeight, PixelFormat.RGBA_8888, 2)
+            Log.i(TAG, "[MediaProjection] ImageReader created (${capWidth}x${capHeight}, density: $density)")
+
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "BoomplayScreenCapture",
                 capWidth,
@@ -144,31 +166,49 @@ class MediaProjectionService : Service() {
                 null,
                 backgroundHandler
             )
+            Log.i(TAG, "[MediaProjection] VirtualDisplay created: $virtualDisplay")
 
             imageReader?.setOnImageAvailableListener({ reader ->
                 val image = reader.acquireLatestImage()
                 if (image != null) {
                     try {
+                        totalFramesReceived++
                         if (!isPaused) {
                             val result = visionAnalyzer.processScreenFrame(image, capWidth, capHeight)
-                            updateOverlayUI(result.countdown, result.roundId)
+                            if (totalFramesReceived % 30 == 1L) {
+                                Log.i(TAG, "[MediaProjection] Frames received: $totalFramesReceived | GameDetected: ${result.gameDetected}")
+                            }
+                            updateOverlayUI(result)
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Frame analysis error", e)
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "[MediaProjection] Frame analysis exception: ${e.message}", e)
                     } finally {
                         image.close()
                     }
                 }
             }, backgroundHandler)
 
-            Log.i(TAG, "Screen capture successfully started ($capWidth x $capHeight)")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting virtual display capture", e)
+            Log.i(TAG, "[MediaProjection] Live screen capture pipeline successfully started!")
+        } catch (e: Throwable) {
+            Log.e(TAG, "[MediaProjection] Error starting virtual display capture", e)
         }
     }
 
     private fun createFloatingOverlay() {
         try {
+            val hasOverlayPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Settings.canDrawOverlays(this)
+            } else {
+                true
+            }
+
+            Log.i(TAG, "[FloatingHUD] Checking overlay permission: hasOverlayPermission=$hasOverlayPermission")
+            if (!hasOverlayPermission) {
+                Log.w(TAG, "[FloatingHUD] SYSTEM_ALERT_WINDOW permission NOT granted. Cannot attach HUD.")
+                Toast.makeText(this, "Please grant Overlay Permission in app first", Toast.LENGTH_LONG).show()
+                return
+            }
+
             val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
@@ -181,12 +221,13 @@ class MediaProjectionService : Service() {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 layoutFlag,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
-                x = 40
+                x = 30
                 y = 120
             }
 
@@ -200,6 +241,7 @@ class MediaProjectionService : Service() {
             val containerMinimized = floatingView?.findViewById<View>(R.id.containerMinimized)
 
             btnClose?.setOnClickListener {
+                Log.i(TAG, "[FloatingHUD] Close button clicked")
                 stopSelf()
             }
 
@@ -212,12 +254,14 @@ class MediaProjectionService : Service() {
                     containerExpanded?.visibility = View.VISIBLE
                     containerMinimized?.visibility = View.GONE
                 }
+                Log.i(TAG, "[FloatingHUD] Minimized state toggled: isMinimized=$isMinimized")
             }
 
             containerMinimized?.setOnClickListener {
                 isMinimized = false
                 containerExpanded?.visibility = View.VISIBLE
                 containerMinimized.visibility = View.GONE
+                Log.i(TAG, "[FloatingHUD] Expanded from minimized bubble")
             }
 
             // Draggable Touch Listener
@@ -241,9 +285,9 @@ class MediaProjectionService : Service() {
                             params.y = initialY + (event.rawY - initialTouchY).toInt()
                             floatingView?.let {
                                 try {
-                                    windowManager.updateViewLayout(it, params)
+                                    windowManager?.updateViewLayout(it, params)
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error updating window layout", e)
+                                    Log.e(TAG, "[FloatingHUD] Error updating window layout", e)
                                 }
                             }
                             return true
@@ -253,41 +297,113 @@ class MediaProjectionService : Service() {
                 }
             })
 
-            windowManager.addView(floatingView, params)
-            Log.i(TAG, "Floating HUD overlay added to WindowManager")
+            windowManager?.addView(floatingView, params)
+            Log.i(TAG, "[FloatingHUD] WindowManager.addView SUCCESS: HUD is now visibly active above all apps")
 
-            // Initial prediction rendering
-            renderInitialPredictions()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating floating overlay", e)
+            // Show initial standby state
+            renderStandbyState()
+        } catch (e: Throwable) {
+            Log.e(TAG, "[FloatingHUD] WindowManager.addView FAILED: ${e.message}", e)
         }
     }
 
-    private fun renderInitialPredictions() {
-        val snapshot = predictionEngine.calculatePrediction(
-            history = listOf("real_madrid", "psg", "juventus"),
-            roundId = "LIVE",
-            isFrozen = false
-        )
+    private fun renderStandbyState() {
+        val textSourceStatus = floatingView?.findViewById<TextView>(R.id.textSourceStatus)
+        val textGameStatus = floatingView?.findViewById<TextView>(R.id.textGameStatus)
+        val textCountdown = floatingView?.findViewById<TextView>(R.id.textCountdown)
+        val textRoundId = floatingView?.findViewById<TextView>(R.id.textRoundId)
+        val textModelStatus = floatingView?.findViewById<TextView>(R.id.textModelStatus)
         val textTopPick = floatingView?.findViewById<TextView>(R.id.textTopPick)
         val textTop2 = floatingView?.findViewById<TextView>(R.id.textTop2)
 
-        textTopPick?.text = "1. ${snapshot.top1.teamName} (X${snapshot.top1.multiplier})"
-        textTop2?.text = "2. ${snapshot.top2.teamName} (X${snapshot.top2.multiplier}) | 3. ${snapshot.top3.teamName} (X${snapshot.top3.multiplier})"
+        textSourceStatus?.text = "SOURCE: WAITING FOR REAL BOOMPLAY FRAME"
+        (textSourceStatus?.parent as? View)?.setBackgroundColor(0xFF0284C7.toInt())
+        textGameStatus?.text = "GAME: NOT DETECTED"
+        textGameStatus?.setTextColor(0xFFF87171.toInt())
+        textCountdown?.text = "CLOCK: WAITING"
+        textCountdown?.setTextColor(0xFF94A3B8.toInt())
+        textRoundId?.text = "ROUND: WAITING FOR SYNC"
+        textModelStatus?.text = "STANDBY"
+        textModelStatus?.setTextColor(0xFF94A3B8.toInt())
+        textTopPick?.text = "1. Waiting for real game frame..."
+        textTop2?.text = "2. Waiting | 3. Waiting"
     }
 
-    private fun updateOverlayUI(countdown: Int?, roundId: String?) {
+    private fun updateOverlayUI(result: NativeVisionResult) {
         mainHandler.post {
+            val textSourceStatus = floatingView?.findViewById<TextView>(R.id.textSourceStatus)
+            val textGameStatus = floatingView?.findViewById<TextView>(R.id.textGameStatus)
             val textCountdown = floatingView?.findViewById<TextView>(R.id.textCountdown)
-            if (countdown != null) {
-                textCountdown?.text = "⏱ ${countdown}s"
-                if (countdown <= 10) {
-                    textCountdown?.setTextColor(0xFFEF4444.toInt()) // Red warning
+            val textRoundId = floatingView?.findViewById<TextView>(R.id.textRoundId)
+            val textModelStatus = floatingView?.findViewById<TextView>(R.id.textModelStatus)
+            val textTopPick = floatingView?.findViewById<TextView>(R.id.textTopPick)
+            val textTop2 = floatingView?.findViewById<TextView>(R.id.textTop2)
+
+            if (result.gameDetected) {
+                textSourceStatus?.text = "🟢 REAL BOOMPLAY SCREEN: CONNECTED"
+                (textSourceStatus?.parent as? View)?.setBackgroundColor(0xFF059669.toInt()) // Emerald green
+                
+                textGameStatus?.text = "GAME: FOOTBALL LEAGUE"
+                textGameStatus?.setTextColor(0xFF34D399.toInt())
+
+                if (result.countdown != null) {
+                    textCountdown?.text = "⏱ ${result.countdown}s"
+                    if (result.countdown <= 5) {
+                        textCountdown?.setTextColor(0xFFEF4444.toInt()) // Red freeze alert
+                        isPredictionFrozen = true
+                        textModelStatus?.text = "LOCKED (≤5s)"
+                        textModelStatus?.setTextColor(0xFFEF4444.toInt())
+                    } else if (result.countdown <= 10) {
+                        textCountdown?.setTextColor(0xFFF59E0B.toInt()) // Amber warning
+                        isPredictionFrozen = false
+                        textModelStatus?.text = "ACTIVE"
+                        textModelStatus?.setTextColor(0xFF38BDF8.toInt())
+                    } else {
+                        textCountdown?.setTextColor(0xFF38BDF8.toInt()) // Cyan
+                        isPredictionFrozen = false
+                        textModelStatus?.text = "ACTIVE"
+                        textModelStatus?.setTextColor(0xFF38BDF8.toInt())
+                    }
                 } else {
-                    textCountdown?.setTextColor(0xFFF59E0B.toInt()) // Amber
+                    textCountdown?.text = "MATCH IN PLAY"
+                    textCountdown?.setTextColor(0xFF94A3B8.toInt())
+                    isPredictionFrozen = true
+                    textModelStatus?.text = "MATCH RUNNING"
+                    textModelStatus?.setTextColor(0xFF94A3B8.toInt())
                 }
+
+                if (result.roundId != null) {
+                    textRoundId?.text = "ROUND: NO. ${result.roundId}"
+                    lastObservedRoundId = result.roundId
+                }
+
+                // Run locked 6-signal PredictionEngine on verified real game screen
+                val currentRound = result.roundId ?: lastObservedRoundId ?: "LIVE"
+                val prediction = predictionEngine.calculatePrediction(
+                    history = listOf("real_madrid", "psg", "juventus"),
+                    roundId = currentRound,
+                    isFrozen = isPredictionFrozen
+                )
+
+                textTopPick?.text = "1. ${prediction.top1.teamName} (X${prediction.top1.multiplier}) [Score: ${prediction.top1.totalScore.toInt()}]"
+                textTop2?.text = "2. ${prediction.top2.teamName} (X${prediction.top2.multiplier}) | 3. ${prediction.top3.teamName} (X${prediction.top3.multiplier})"
             } else {
-                textCountdown?.text = "LIVE"
+                // Game not currently in foreground / frame doesn't match Boomplay
+                textSourceStatus?.text = "SOURCE: WAITING FOR REAL BOOMPLAY FRAME"
+                (textSourceStatus?.parent as? View)?.setBackgroundColor(0xFF0284C7.toInt())
+                
+                textGameStatus?.text = "GAME: NOT DETECTED"
+                textGameStatus?.setTextColor(0xFFF87171.toInt())
+                
+                textCountdown?.text = "CLOCK: WAITING"
+                textCountdown?.setTextColor(0xFF94A3B8.toInt())
+                
+                textRoundId?.text = "ROUND: WAITING FOR SYNC"
+                textModelStatus?.text = "STANDBY"
+                textModelStatus?.setTextColor(0xFF94A3B8.toInt())
+                
+                textTopPick?.text = "1. Waiting for real game frame..."
+                textTop2?.text = "2. Waiting | 3. Waiting"
             }
         }
     }
@@ -313,7 +429,7 @@ class MediaProjectionService : Service() {
 
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("⚽ Football League Analyzer HUD")
-            .setContentText("Screen observer and live HUD active")
+            .setContentText("Live screen observer active above Boomplay")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -324,7 +440,7 @@ class MediaProjectionService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
-        Log.i(TAG, "MediaProjectionService destroying")
+        Log.i(TAG, "[MediaProjection] Service destroying - cleaning up resources")
         try {
             virtualDisplay?.release()
             virtualDisplay = null
@@ -336,11 +452,12 @@ class MediaProjectionService : Service() {
             handlerThread = null
 
             if (floatingView != null) {
-                windowManager.removeView(floatingView)
+                windowManager?.removeView(floatingView)
                 floatingView = null
+                Log.i(TAG, "[FloatingHUD] Floating view removed from WindowManager")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning up resources", e)
+        } catch (e: Throwable) {
+            Log.e(TAG, "[MediaProjection] Error cleaning up resources", e)
         }
     }
 
