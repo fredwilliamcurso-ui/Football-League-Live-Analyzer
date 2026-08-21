@@ -4,14 +4,14 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content">
 
-    <!-- 1. MINIMIZED CIRCULAR FLOATING BUBBLE (Exact Screenshot Design) -->
+    <!-- 1. MINIMIZED CIRCULAR FLOATING BUBBLE -->
     <RelativeLayout
         android:id="@+id/containerMinimized"
         android:layout_width="66dp"
         android:layout_height="66dp"
         android:visibility="gone">
 
-        <!-- Glowing Green Neon Circular Container -->
+        <!-- Glowing Cyan Circular Container -->
         <LinearLayout
             android:id="@+id/bubbleCircle"
             android:layout_width="56dp"
@@ -27,15 +27,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="⚽"
-                android:textSize="20sp" />
+                android:textSize="18sp" />
 
-            <!-- LIVE Text -->
+            <!-- LIVE / WAIT Text -->
             <TextView
                 android:id="@+id/bubbleLiveText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="LIVE"
-                android:textColor="#10B981"
+                android:textColor="#00E5FF"
                 android:textSize="9sp"
                 android:textStyle="bold"
                 android:letterSpacing="0.05" />
@@ -59,10 +59,10 @@
             android:textStyle="bold" />
     </RelativeLayout>
 
-    <!-- 2. EXPANDED HUD PANEL (Exact Screenshot Design) -->
+    <!-- 2. EXPANDED HUD PANEL -->
     <LinearLayout
         android:id="@+id/containerExpanded"
-        android:layout_width="290dp"
+        android:layout_width="310dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_hud_panel"
@@ -94,21 +94,6 @@
                 android:textStyle="bold"
                 android:letterSpacing="0.05" />
 
-            <!-- Pause / Minimize / Close Actions -->
-            <TextView
-                android:id="@+id/btnAccuracy"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="80%"
-                android:textColor="#94A3B8"
-                android:textSize="10sp"
-                android:background="#1E293B"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
-                android:layout_marginEnd="6dp" />
-
             <TextView
                 android:id="@+id/btnMinimizeOverlay"
                 android:layout_width="26dp"
@@ -131,49 +116,108 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Status & Clock Row -->
+        <!-- REAL-TIME DIAGNOSTIC TELEMETRY STRIP -->
         <LinearLayout
+            android:id="@+id/panelDiagnostics"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:layout_marginTop="6dp">
+            android:orientation="vertical"
+            android:background="#0A101D"
+            android:padding="6dp"
+            android:layout_marginTop="4dp">
 
-            <TextView
-                android:id="@+id/textClockSynced"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🟢 CLOCK: SYNCED"
-                android:textColor="#10B981"
-                android:textSize="10sp"
-                android:textStyle="bold" />
+                android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/diagBoomplay"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="BOOMPLAY: DETECTED"
+                    android:textColor="#34D399"
+                    android:textSize="8.5sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/diagGame"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="GAME: DETECTED"
+                    android:textColor="#34D399"
+                    android:textSize="8.5sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/textRoundId"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="RND: 08200035"
-                android:textColor="#94A3B8"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:layout_marginEnd="6dp" />
+                android:orientation="horizontal"
+                android:layout_marginTop="2dp">
+                <TextView
+                    android:id="@+id/diagScreenState"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="SCREEN STATE: FOOTBALL_LEAGUE_GAME"
+                    android:textColor="#38BDF8"
+                    android:textSize="8.5sp" />
+                <TextView
+                    android:id="@+id/diagClock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CLOCK: 24s"
+                    android:textColor="#FBBF24"
+                    android:textSize="8.5sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
-            <TextView
-                android:id="@+id/textCountdown"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="⏱ 24s"
-                android:textColor="#F59E0B"
-                android:textSize="11sp"
-                android:textStyle="bold" />
+                android:orientation="horizontal"
+                android:layout_marginTop="2dp">
+                <TextView
+                    android:id="@+id/diagRoundId"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="ROUND ID: 08200035"
+                    android:textColor="#94A3B8"
+                    android:textSize="8.5sp" />
+                <TextView
+                    android:id="@+id/diagPhase"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PHASE: BETTING_COUNTDOWN"
+                    android:textColor="#A78BFA"
+                    android:textSize="8.5sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="2dp">
+                <TextView
+                    android:id="@+id/diagResult"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="RESULT: UNKNOWN"
+                    android:textColor="#94A3B8"
+                    android:textSize="8.5sp" />
+                <TextView
+                    android:id="@+id/diagPipelines"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="MP: ACTIVE | OCR: ACTIVE | FP: ACTIVE"
+                    android:textColor="#10B981"
+                    android:textSize="7.5sp" />
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- FINAL MODEL DECISION CARD -->
+        <!-- FINAL MODEL DECISION CARD (Display Only) -->
         <LinearLayout
             android:id="@+id/cardDecision"
             android:layout_width="match_parent"
@@ -181,7 +225,7 @@
             android:orientation="vertical"
             android:background="@drawable/bg_decision_card"
             android:padding="8dp"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="6dp">
 
             <!-- Title & Model Score Header -->
             <LinearLayout
@@ -200,9 +244,10 @@
                     android:textStyle="bold" />
 
                 <TextView
+                    android:id="@+id/badgeModelScore"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="FINAL MODEL SCORE"
+                    android:text="6-SIGNAL MODEL"
                     android:textColor="#047857"
                     android:textSize="8sp"
                     android:background="#064E3B"
@@ -248,7 +293,7 @@
                         android:id="@+id/textTopPick"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Juventus"
+                        android:text="Real Madrid"
                         android:textColor="#FFFFFF"
                         android:textSize="14sp"
                         android:textStyle="bold" />
@@ -257,7 +302,7 @@
                         android:id="@+id/textMultiplier"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Multiplier: X4"
+                        android:text="Multiplier: X2.1"
                         android:textColor="#FBBF24"
                         android:textSize="10sp"
                         android:textStyle="bold" />
@@ -280,7 +325,7 @@
                         android:id="@+id/textModelScore"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="54.9"
+                        android:text="82.8"
                         android:textColor="#2DD4BF"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -301,7 +346,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Second: PSG 49.4"
+                    android:text="Second: Paris SG 80.7"
                     android:textColor="#94A3B8"
                     android:textSize="9sp"
                     android:gravity="center" />
@@ -316,7 +361,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Third: Man United 42.2"
+                    android:text="Third: Bayern Munich 78.1"
                     android:textColor="#94A3B8"
                     android:textSize="9sp"
                     android:gravity="center" />
@@ -349,34 +394,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Live Data & Confidence Strip -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="6dp">
-
-            <TextView
-                android:id="@+id/textLiveDataRounds"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="🟢 LIVE DATA (12 RNDS)"
-                android:textColor="#10B981"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/textConfTeams"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="CONF: 98%  TEAMS: 8/8"
-                android:textColor="#94A3B8"
-                android:textSize="8sp" />
-        </LinearLayout>
-
-        <!-- Bottom Action Bar (Stop Monitoring / Settings) -->
+        <!-- Bottom Action Bar (Stop Monitoring Only) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -385,26 +403,14 @@
 
             <TextView
                 android:id="@+id/btnStopMonitoring"
-                android:layout_width="0dp"
-                android:layout_height="32dp"
-                android:layout_weight="1"
+                android:layout_width="match_parent"
+                android:layout_height="30dp"
                 android:background="#2E1065"
                 android:gravity="center"
-                android:text="STOP MONITORING"
+                android:text="STOP LIVE OBSERVER"
                 android:textColor="#F43F5E"
                 android:textSize="10sp"
-                android:textStyle="bold"
-                android:layout_marginEnd="6dp" />
-
-            <TextView
-                android:id="@+id/btnOverlaySettings"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="#1E293B"
-                android:gravity="center"
-                android:text="⚙"
-                android:textColor="#94A3B8"
-                android:textSize="14sp" />
+                android:textStyle="bold" />
         </LinearLayout>
 
     </LinearLayout>

@@ -1,3 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Football League Live Analyzer</string>
+    <string name="boomplay_app_name">Boomplay</string>
+    <string name="app_version">v2.5.1</string>
+    
+    <!-- Floating Overlay & Live Game Observer Strings -->
+    <string name="overlay_service_title">Football League Live Analyzer</string>
+    <string name="overlay_service_desc">Observing Boomplay Football League matches in real-time...</string>
+    <string name="overlay_active">⚽ Overlay Active &amp; Monitoring</string>
+    <string name="overlay_idle">⏸️ Observer Idle</string>
+    <string name="overlay_countdown_freeze">⚠️ LOCKED (≤5s Freeze Rule)</string>
+    <string name="status_connected_to_boomplay">🟢 Synchronized with Boomplay Live Game Stream</string>
+    <string name="start_observer_btn">START LIVE SCREEN OBSERVER</string>
+    <string name="stop_observer_btn">STOP LIVE OBSERVER</string>
+    <string name="grant_overlay_perm_btn">GRANT OVERLAY PERMISSION</string>
+    <string name="open_boomplay_btn">OPEN BOOMPLAY APP</string>
+    <string name="final_model_decision_title">FINAL MODEL DECISION</string>
+    
+    <!-- Boomplay Core & Live Room Strings -->
+    <string name="boom_id">Boom ID</string>
+    <string name="boom_live">BoomLive</string>
+    <string name="boom_verified">Boom Verified</string>
+    <string name="boomplay_recommendation">Boomplay Recommendation</string>
+    <string name="home_of_music">Home of Music &amp; Live Football</string>
+    <string name="football_league_game">Football League Live Game</string>
+    <string name="game_center">Game Center</string>
+    <string name="live_game_jackpot_time">Jackpot Time!</string>
+    <string name="live_game_must_win">100% Signal Match Model</string>
+    <string name="live_room_queue">Now Playing</string>
+    <string name="adcoins_token">Tokens</string>
+    <string name="adcoins_free_mode">Free Mode</string>
+    
+    <!-- ExoPlayer & Audio Controls -->
+    <string name="sound_effect_title">Audio &amp; Notification Engine</string>
+    <string name="sound_effect_on">ON</string>
+    <string name="sound_effect_off">OFF</string>
+    <string name="audio_quality">Extreme HD</string>
 </resources>
